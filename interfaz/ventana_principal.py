@@ -223,9 +223,6 @@ class VentanaPrincipal(QMainWindow):
         filtradas = [f for f in filas if f["reloj"] >= j]
         mostradas = filtradas[:i]
         ultima = filas[-1]
-        caca = filas[-2]
-        print("ultima", caca["reloj"])
-        print("iteracion", caca["nro"])
         if ultima not in mostradas:
             mostradas = mostradas + [ultima]
 
