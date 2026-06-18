@@ -267,6 +267,7 @@ class Simulacion:
             self.fel[EV_FIN_REFRIGERIO] = self.reloj + dur
             row["tipo_refrig"] = "Refresco" if tipo == ent.REFRESCO else "Cafe"
             row["dur_refrig"] = dur
+            row["euler_idx"] = len(self.euler_detalles)
             self.euler_detalles.append({
                 "numero": len(self.euler_detalles) + 1,
                 "tipo": row["tipo_refrig"],
@@ -310,6 +311,7 @@ class Simulacion:
             "rnd_reparacion": None, "dur_reparacion": None,
             "rnd_refrig": None, "toma_refrig": None,
             "rnd_tipo": None, "tipo_refrig": None, "dur_refrig": None,
+            "euler_idx": None,
         }
 
     def _completar_row(self, row, mostrar_clientes=True):

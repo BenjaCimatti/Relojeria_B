@@ -79,6 +79,7 @@ class VentanaPrincipal(QMainWindow):
         # ---- Panel derecho: pestanas ----
         self.tabs = QTabWidget()
         self.tabla = TablaVector()
+        self.tabla.euler_solicitado.connect(self._ir_a_euler)
         self.tabs.addTab(self.tabla, "Vector de Estado")
         self.tabs.addTab(self._tab_euler(), "Integraci\u00f3n Euler")
         layout.addWidget(self.tabs, 1)
@@ -87,9 +88,9 @@ class VentanaPrincipal(QMainWindow):
         grupo = QGroupBox("Par\u00e1metros")
         form = QFormLayout(grupo)
 
-        self.in_X = self._spin(1440, 1, 1_000_000, 10, 2)
+        self.in_X = self._spin(24, 0.01, 100_000, 1, 2)
         self.in_i = self._ispin(100, 1, 1_000_000)
-        self.in_j = self._spin(0, 0, 1_000_000, 10, 2)
+        self.in_j = self._spin(0, 0, 100_000, 1, 2)
         self.in_A = self._spin(13, 0, 10_000, 1, 2)
         self.in_B = self._spin(17, 0, 10_000, 1, 2)
         self.in_C = self._spin(6, 0, 10_000, 1, 2)
@@ -103,9 +104,9 @@ class VentanaPrincipal(QMainWindow):
         self.in_a = self._spin(1.0, -10_000, 10_000, 0.1, 4)
         self.in_h = self._spin(0.1, 0.0001, 100, 0.01, 4)
 
-        form.addRow("X - Tiempo total (min):", self.in_X)
+        form.addRow("X - Tiempo total (horas):", self.in_X)
         form.addRow("i - Iteraciones a mostrar:", self.in_i)
-        form.addRow("j - Inicio intervalo (min):", self.in_j)
+        form.addRow("j - Inicio intervalo (horas):", self.in_j)
         form.addRow("A - Llegada min:", self.in_A)
         form.addRow("B - Llegada max:", self.in_B)
         form.addRow("C - Venta min:", self.in_C)
@@ -180,7 +181,7 @@ class VentanaPrincipal(QMainWindow):
     # ------------------------------------------------------------------
     def _leer_parametros(self):
         return Parametros(
-            X=self.in_X.value(),
+            X=self.in_X.value() * 60.0,  # las horas se convierten a minutos
             A=self.in_A.value(), B=self.in_B.value(),
             C=self.in_C.value(), D=self.in_D.value(),
             E=self.in_E.value(), F=self.in_F.value(),
@@ -216,19 +217,27 @@ class VentanaPrincipal(QMainWindow):
             QWidget.unsetCursor(self)
             self.btn_simular.setEnabled(True)
 
-        # Filtrado de filas a mostrar: reloj >= j, hasta i filas + ultima fila
-        j = self.in_j.value()
+        # Filtrado: filas con reloj >= j (en minutos), hasta i, MAS la fila final.
+        # j se ingresa en horas -> se convierte a minutos.
+        j_min = self.in_j.value() * 60.0
         i = self.in_i.value()
         filas = self.sim.filas
-        filtradas = [f for f in filas if f["reloj"] >= j]
-        mostradas = filtradas[:i]
-        ultima = filas[-1]
-        if ultima not in mostradas:
-            mostradas = mostradas + [ultima]
+        final = filas[-1]
+        # Cuerpo: filas desde j (excluyendo la final), acotado a i iteraciones.
+        cuerpo = [f for f in filas if f["reloj"] >= j_min and f is not final]
+        mostradas = cuerpo[:i]
+        # Siempre se agrega la fila final, aunque i sea mayor a las restantes.
+        mostradas = mostradas + [final]
 
         self.tabla.cargar(mostradas)
         self._mostrar_resultados()
         self._cargar_euler()
+
+    def _ir_a_euler(self, idx):
+        """Navega desde la celda enlace de la tabla a la planilla de Euler."""
+        self.tabs.setCurrentIndex(1)
+        if 0 <= idx < self.combo_euler.count():
+            self.combo_euler.setCurrentIndex(idx)
 
     def _mostrar_resultados(self):
         est = self.sim.estadisticas()
