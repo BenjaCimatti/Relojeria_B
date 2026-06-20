@@ -132,24 +132,17 @@ class Simulacion:
         elif cliente.motivo == ent.ENTREGAR:
             self.fel[EV_FIN_ENTREGA] = self.reloj + 3.0
         elif cliente.motivo == ent.RETIRAR:
-            # Hay reloj disponible (verificado por el llamador): se atiende 3 min.
+            # Siempre se atiende 3 min; el stock se verifica al fin_retiro.
             self.fel[EV_FIN_RETIRO] = self.reloj + 3.0
 
     def _atender_siguiente(self, row):
         """Tras finalizar una atencion, intenta atender al siguiente de la cola.
 
-        Los clientes que vienen a retirar y no hay reloj se van sin ocupar al
-        ayudante (se cuentan y se descartan). Si la cola se vacia, el ayudante
-        pasa a Libre y se acumula el tiempo ocupado.
+        Si la cola se vacia, el ayudante pasa a Libre y se acumula el tiempo
+        ocupado.
         """
-        while self.ayudante.cola:
+        if self.ayudante.cola:
             siguiente = self.ayudante.cola.pop(0)
-            if siguiente.motivo == ent.RETIRAR and self.relojero.cola_listos_retirar <= 0:
-                # Se va sin ser atendido
-                self.acum_no_reloj += 1
-                if siguiente in self.clientes_activos:
-                    self.clientes_activos.remove(siguiente)
-                continue
             self._iniciar_servicio(siguiente, row)
             return
         # Nadie mas para atender
@@ -191,17 +184,11 @@ class Simulacion:
         row["motivo"] = motivo
 
         cliente = self._nuevo_cliente(motivo)
-        if motivo == ent.RETIRAR:
-            self.acum_total_retiros += 1
 
         if self.ayudante.estado == ent.LIBRE:
-            if motivo == ent.RETIRAR and self.relojero.cola_listos_retirar <= 0:
-                # No hay reloj: el cliente se va de inmediato, no ocupa al ayudante
-                self.acum_no_reloj += 1
-            else:
-                self.ayudante.inicio_ocupacion = self.reloj
-                self.clientes_activos.append(cliente)
-                self._iniciar_servicio(cliente, row)
+            self.ayudante.inicio_ocupacion = self.reloj
+            self.clientes_activos.append(cliente)
+            self._iniciar_servicio(cliente, row)
         else:
             # Ayudante ocupado: el cliente espera en la cola
             self.clientes_activos.append(cliente)
@@ -216,11 +203,13 @@ class Simulacion:
 
     def _ev_fin_retiro(self, row):
         self.fel[EV_FIN_RETIRO] = None
-        # El cliente encontro su reloj: se reduce la cola de listos para retirar
+        # Se contabiliza el retiro al finalizar (consistente con la estadistica)
+        self.acum_total_retiros += 1
+        # Recien aqui se verifica si habia un reloj listo para retirar
         if self.relojero.cola_listos_retirar > 0:
             self.relojero.cola_listos_retirar -= 1
         else:
-            # Salvaguarda: no habia reloj
+            # No habia reloj disponible para este retiro
             self.acum_no_reloj += 1
         self._cliente_saliente = self.ayudante.cliente_actual
         if self._cliente_saliente in self.clientes_activos:
@@ -356,7 +345,9 @@ class Simulacion:
         clientes = {}
         if mostrar_clientes:
             for c in self.clientes_activos:
-                clientes[c.id] = (c.estado, c.motivo)
+                # El motivo solo se arrastra mientras el cliente espera atencion (EA)
+                motivo_visible = c.motivo if c.estado == ent.ESPERANDO_ATENCION else ""
+                clientes[c.id] = (c.estado, motivo_visible)
             if self._cliente_saliente is not None:
                 clientes[self._cliente_saliente.id] = ("-", "-")
         row["clientes"] = clientes

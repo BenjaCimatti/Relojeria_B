@@ -34,12 +34,28 @@ def fmt_int(v):
     return str(int(v))
 
 
+def fmt_hms(v):
+    """Convierte un valor en minutos (float) a formato hh:mm:ss."""
+    if v is None or v == "":
+        return ""
+    try:
+        total_seg = int(round(float(v) * 60))
+    except (ValueError, TypeError):
+        return str(v)
+    signo = "-" if total_seg < 0 else ""
+    total_seg = abs(total_seg)
+    h = total_seg // 3600
+    m = (total_seg % 3600) // 60
+    s = total_seg % 60
+    return f"{signo}{h:02d}:{m:02d}:{s:02d}"
+
+
 # (encabezado, clave, formato)
 # formato: 'str', 'int', 'time', 'rnd', 'pct'
 COLUMNAS = [
     ("N\u00b0", "nro", "int"),
     ("Evento", "evento", "str"),
-    ("Reloj (h)", "reloj", "hours"),
+    ("Reloj (hh:mm:ss)", "reloj", "hms"),
     ("RND Llegada", "rnd_llegada", "rnd"),
     ("Tiempo Llegada", "t_llegada", "time"),
     ("Pr\u00f3x. Llegada", "prox_llegada", "time"),
@@ -75,7 +91,7 @@ COLUMNAS = [
     ("% Ocup. Reloj.", "porc_ocup_rel", "pct"),
     ("Acum. D\u00edas", "acum_dias", "int"),
     ("Acum. Caf\u00e9s", "acum_cafes", "int"),
-    ("Prom. Caf\u00e9s/D\u00eda", "prom_cafes", "time"),
+    ("Prom. Caf\u00e9s/D\u00eda", "prom_cafes", "pct"),
 ]
 
 
@@ -86,13 +102,11 @@ def _formatear(valor, tipo):
         return fmt_int(valor)
     if tipo == "rnd":
         return fmt_rnd(valor)
-    if tipo in ("time", "pct"):
+    if tipo == "pct":
         return fmt_num(valor, 2)
-    if tipo == "hours":
-        # El reloj se muestra en horas (minutos / 60)
-        if valor is None or valor == "":
-            return ""
-        return fmt_num(float(valor) / 60.0, 2)
+    if tipo in ("time", "hms"):
+        # Tiempos almacenados en minutos, mostrados como hh:mm:ss
+        return fmt_hms(valor)
     return "" if valor is None else str(valor)
 
 
