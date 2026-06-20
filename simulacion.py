@@ -2,9 +2,11 @@
 
 La logica esta completamente separada de la interfaz grafica. La clase
 ``Simulacion`` recibe los parametros, ejecuta el bucle de eventos y produce:
-    - ``filas``: el vector de estado (lista de dicts, una fila por iteracion)
+    - ``filas``: el vector de estado, pero SOLO la ventana a mostrar
+      (las ``i`` iteraciones a partir del instante ``j``) mas la fila final.
+      Las iteraciones fuera de esa ventana se simulan pero no se guardan.
     - ``estadisticas``: metricas finales
-    - ``euler_detalles``: historial de cada integracion de refrigerio
+    - ``euler_detalles``: historial de cada integracion de refrigerio guardada
 """
 
 import math
@@ -32,6 +34,8 @@ class Parametros:
     a: float = 1.0             # constante de apuro (Euler)
     h: float = 0.1             # paso de integracion (Euler)
     listos_iniciales: int = 3
+    i: int = 100               # cantidad de filas a persistir/mostrar
+    j: float = 0.0             # instante (minutos) desde el cual se persisten filas
     max_iteraciones: int = 100_000
 
 
@@ -75,9 +79,10 @@ class Simulacion:
         self.acum_ocup_relojero = 0.0
         self.acum_cafes = 0
 
-        # Salidas
+        # Salidas (solo se guarda la ventana [j, j+i iteraciones) + fila final)
         self.filas = []
         self.euler_detalles = []   # lista de dicts: numero, tipo, historial
+        self._guardadas = 0        # filas de la ventana ya persistidas
 
         # Cliente que abandona el sistema en el evento actual (para mostrar "-")
         self._cliente_saliente = None
@@ -256,16 +261,16 @@ class Simulacion:
             self.fel[EV_FIN_REFRIGERIO] = self.reloj + dur
             row["tipo_refrig"] = "Refresco" if tipo == ent.REFRESCO else "Cafe"
             row["dur_refrig"] = dur
-            row["euler_idx"] = len(self.euler_detalles)
-            self.euler_detalles.append({
-                "numero": len(self.euler_detalles) + 1,
+            # El detalle de Euler se registra solo si la fila llega a guardarse
+            # (ver _registrar_euler), para no acumular iteraciones descartadas.
+            row["_euler_pendiente"] = {
                 "tipo": row["tipo_refrig"],
                 "reloj": self.reloj,
                 "R": r,
                 "c_act": c_act,
                 "duracion": dur,
                 "historial": historial,
-            })
+            }
         else:
             row["toma_refrig"] = "No toma"
             # No toma refrigerio
@@ -353,6 +358,35 @@ class Simulacion:
         row["clientes"] = clientes
 
     # ------------------------------------------------------------------
+    # Persistencia de la ventana a mostrar
+    # ------------------------------------------------------------------
+    def _ventana_abierta(self):
+        """True si la fila actual debe guardarse: dentro de [j, j+i iteraciones)."""
+        return self.reloj >= self.p.j and self._guardadas < self.p.i
+
+    def _registrar_euler(self, row):
+        """Si la fila tiene un refrigerio pendiente, lo agrega a euler_detalles."""
+        pendiente = row.pop("_euler_pendiente", None)
+        if pendiente is None:
+            return
+        pendiente["numero"] = len(self.euler_detalles) + 1
+        row["euler_idx"] = len(self.euler_detalles)
+        self.euler_detalles.append(pendiente)
+
+    def _quizas_guardar(self, row):
+        """Persiste la fila solo si esta dentro de la ventana a mostrar.
+
+        Las filas fuera de la ventana se descartan (junto con su eventual
+        detalle de Euler), de modo que nunca se acumulan en memoria.
+        """
+        if not self._ventana_abierta():
+            return
+        self._guardadas += 1
+        self._completar_row(row)
+        self._registrar_euler(row)
+        self.filas.append(row)
+
+    # ------------------------------------------------------------------
     # Bucle principal
     # ------------------------------------------------------------------
     def ejecutar(self):
@@ -365,8 +399,7 @@ class Simulacion:
         row0 = self._base_row(0, "Inicializacion")
         row0["rnd_llegada"] = rnd_ll
         row0["t_llegada"] = t_ll
-        self._completar_row(row0)
-        self.filas.append(row0)
+        self._quizas_guardar(row0)
 
         self.iteracion = 0
         while self.iteracion < self.p.max_iteraciones:
@@ -393,8 +426,8 @@ class Simulacion:
             elif nombre == EV_FIN_REFRIGERIO:
                 self._ev_fin_refrigerio(row)
 
-            self._completar_row(row)
-            self.filas.append(row)
+            # Solo se guarda la ventana a mostrar; el resto se simula y descarta.
+            self._quizas_guardar(row)
 
         # Fila final en el instante X (estado del sistema, sin objetos temporales)
         self._fila_final()

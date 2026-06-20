@@ -191,6 +191,8 @@ class VentanaPrincipal(QMainWindow):
             prob_refrigerio=self.in_pref.value(),
             a=self.in_a.value(),
             h=self.in_h.value(),
+            i=self.in_i.value(),
+            j=self.in_j.value() * 60.0,  # las horas se convierten a minutos
         )
 
     def simular(self):
@@ -217,19 +219,8 @@ class VentanaPrincipal(QMainWindow):
             QWidget.unsetCursor(self)
             self.btn_simular.setEnabled(True)
 
-        # Filtrado: filas con reloj >= j (en minutos), hasta i, MAS la fila final.
-        # j se ingresa en horas -> se convierte a minutos.
-        j_min = self.in_j.value() * 60.0
-        i = self.in_i.value()
-        filas = self.sim.filas
-        final = filas[-1]
-        # Cuerpo: filas desde j (excluyendo la final), acotado a i iteraciones.
-        cuerpo = [f for f in filas if f["reloj"] >= j_min and f is not final]
-        mostradas = cuerpo[:i]
-        # Siempre se agrega la fila final, aunque i sea mayor a las restantes.
-        mostradas = mostradas + [final]
-
-        self.tabla.cargar(mostradas)
+        # El motor ya persiste solo la ventana a mostrar ([j, j+i) + fila final).
+        self.tabla.cargar(self.sim.filas)
         self._mostrar_resultados()
         self._cargar_euler()
 
