@@ -296,9 +296,10 @@ class VentanaPrincipal(QMainWindow):
         QMessageBox.information(self, "Exportar", f"Guardado en:\n{ruta}")
 
     def limpiar(self):
-        self.tabla.clear()
-        self.tabla.setRowCount(0)
-        self.tabla.setColumnCount(0)
+        # TablaVector ahora es un QTableView (modelo/vista). Ya no tiene
+        # setRowCount()/setColumnCount() como QTableWidget; basta con
+        # limpiar() para vaciar el modelo.
+        self.tabla.limpiar()
         self.tabla_euler.setRowCount(0)
         self.combo_euler.clear()
         self.lbl_euler_info.setText("-")
