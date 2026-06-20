@@ -266,6 +266,7 @@ class Simulacion:
             row["_euler_pendiente"] = {
                 "tipo": row["tipo_refrig"],
                 "reloj": self.reloj,
+                "iteracion": self.iteracion,
                 "R": r,
                 "c_act": c_act,
                 "duracion": dur,

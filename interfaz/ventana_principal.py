@@ -242,7 +242,7 @@ class VentanaPrincipal(QMainWindow):
         self.combo_euler.clear()
         for d in self.sim.euler_detalles:
             self.combo_euler.addItem(
-                f"#{d['numero']} - {d['tipo']} @ reloj {d['reloj']:.2f} "
+                f"#{d['numero']} - {d['tipo']} | Iteraci\u00f3n {d['iteracion']} "
                 f"(R={d['R']}, dur={d['duracion']:.2f})"
             )
         self.combo_euler.blockSignals(False)
@@ -258,8 +258,8 @@ class VentanaPrincipal(QMainWindow):
             return
         d = self.sim.euler_detalles[idx]
         self.lbl_euler_info.setText(
-            f"Refrigerio #{d['numero']} - {d['tipo']} | C_act={d['c_act']} | "
-            f"R={d['R']} | Duraci\u00f3n={d['duracion']:.4f} min | "
+            f"Refrigerio #{d['numero']} - {d['tipo']} | Iteraci\u00f3n {d['iteracion']} | "
+            f"C_act={d['c_act']} | R={d['R']} | Duraci\u00f3n={d['duracion']:.4f} min | "
             f"pasos={len(d['historial']) - 1}"
         )
         hist = d["historial"]
