@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QLabel, QPushButton, QDoubleSpinBox, QSpinBox,
     QGridLayout, QVBoxLayout, QHBoxLayout, QGroupBox, QTabWidget, QTableWidget,
     QTableWidgetItem, QComboBox, QFormLayout, QMessageBox, QScrollArea,
-    QFileDialog, QSizePolicy
+    QFileDialog, QSizePolicy, QProgressDialog
 )
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
@@ -304,8 +304,47 @@ class VentanaPrincipal(QMainWindow):
             "CSV (*.csv)")
         if not ruta:
             return
-        self.tabla.exportar_csv(ruta)
-        QMessageBox.information(self, "Exportar", f"Guardado en:\n{ruta}")
+
+        # Exportar en un hilo aparte (ver ExportadorCSV en tabla_vector.py):
+        # con 100mil+ filas, escribir el CSV de forma sincronica bloquea la
+        # interfaz varios segundos; el sistema operativo puede llegar a
+        # marcar la ventana como "no responde" (lo que se ve como un
+        # crash). Mientras corre, mostramos una barra de progreso y
+        # deshabilitamos los botones que tocan los mismos datos.
+        self._dlg_export = QProgressDialog(
+            "Exportando vector de estado...", None, 0, 100, self)
+        self._dlg_export.setWindowTitle("Exportar")
+        self._dlg_export.setWindowModality(Qt.WindowModal)
+        self._dlg_export.setMinimumDuration(0)
+        self._dlg_export.setAutoClose(False)
+        self._dlg_export.setCancelButton(None)  # no se puede cancelar a mitad de la escritura
+        self._dlg_export.setValue(0)
+
+        self.btn_exportar.setEnabled(False)
+        self.btn_simular.setEnabled(False)
+        self.btn_limpiar.setEnabled(False)
+
+        def _rehabilitar():
+            self.btn_exportar.setEnabled(True)
+            self.btn_simular.setEnabled(True)
+            self.btn_limpiar.setEnabled(True)
+            self._dlg_export.close()
+
+        def _on_terminado():
+            _rehabilitar()
+            QMessageBox.information(self, "Exportar", f"Guardado en:\n{ruta}")
+
+        def _on_error(mensaje):
+            _rehabilitar()
+            QMessageBox.critical(self, "Exportar",
+                                 f"No se pudo exportar el archivo:\n{mensaje}")
+
+        self._hilo_export = self.tabla.exportar_csv_async(
+            ruta,
+            on_progreso=self._dlg_export.setValue,
+            on_terminado=_on_terminado,
+            on_error=_on_error,
+        )
 
     def limpiar(self):
         # TablaVector ahora es un QTableView (modelo/vista). Ya no tiene

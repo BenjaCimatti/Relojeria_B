@@ -26,7 +26,7 @@ import bisect
 from PyQt5.QtWidgets import QTableView, QAbstractItemView, QApplication, QHeaderView
 from PyQt5.QtGui import QFont, QColor, QPainter, QKeySequence
 from PyQt5.QtCore import (Qt, QRect, QSize, pyqtSignal, QAbstractTableModel,
-                           QModelIndex)
+                           QModelIndex, QThread)
 
 
 def fmt_num(v, dec=2):
@@ -109,9 +109,38 @@ COLUMNAS = [
 ]
 
 
+def _limpiar_csv(s):
+    """Reemplaza separador (;) y saltos de linea por algo seguro para CSV.
+
+    Hace un chequeo rapido con 'in' antes de llamar a replace(): para el
+    caso normal (sin esos caracteres, que es la inmensa mayoria de las
+    celdas) esto es mas rapido que llamar replace() siempre sin necesidad.
+    """
+    if ";" in s or "\n" in s or "\r" in s:
+        return s.replace(";", ",").replace("\r", "").replace("\n", " ")
+    return s
+
+
+
+def _clientes_compacto(clientes_dict):
+    """Convierte el dict de clientes a formato compacto para CSV.
+
+    Ej: 'C1(SA,Comprar) C5(EA,Retirar) C3(-,-)'
+    Solo incluye los clientes presentes en la fila (tipicamente 1-5),
+    ignorando los miles que no estan. Esto hace la exportacion O(presentes)
+    en vez de O(total_clientes_simulacion).
+    """
+    if not clientes_dict:
+        return ""
+    partes = []
+    for cid, (estado, motivo) in clientes_dict.items():
+        partes.append(f"C{cid}({estado},{motivo})")
+    return " ".join(partes)
+
+
 def _formatear(valor, tipo):
     if tipo == "str":
-        return "" if valor is None else str(valor)
+        return "" if valor is None else _limpiar_csv(str(valor))
     if tipo == "int":
         return fmt_int(valor)
     if tipo == "rnd":
@@ -121,7 +150,7 @@ def _formatear(valor, tipo):
     if tipo in ("time", "hms"):
         # Tiempos almacenados en minutos, mostrados como hh:mm:ss
         return fmt_hms(valor)
-    return "" if valor is None else str(valor)
+    return "" if valor is None else _limpiar_csv(str(valor))
 
 
 # Indice de la columna "Duraci\u00f3n Refrigerio" (hipervinculo a la planilla Euler)
@@ -392,6 +421,65 @@ class VectorEstadoModel(QAbstractTableModel):
         return None
 
 
+class ExportadorCSV(QThread):
+    """Escribe el CSV del vector de estado en un hilo separado.
+
+    exportar_csv() (el metodo sincronico de TablaVector) bloquea el hilo de
+    la interfaz mientras escribe el archivo. Con 100mil+ filas eso puede
+    tardar varios segundos, tiempo durante el cual Qt no procesa eventos: la
+    ventana deja de responder y el sistema operativo puede llegar a marcarla
+    como colgada. Esta clase hace el mismo trabajo pero en un QThread, asi
+    la interfaz sigue respondiendo y se puede mostrar progreso real.
+
+    Los clientes se exportan en formato compacto (una sola columna
+    "Clientes" con texto tipo 'C1(SA,Comprar) C5(EA,Retirar)'), lo que
+    elimina la necesidad de iterar miles de ids_clientes por fila.
+
+    Importante: recibe los datos ya extraidos (filas) como listas de Python
+    comunes, NO el modelo ni la vista. El hilo de fondo no debe tocar ningun
+    objeto Qt de la interfaz (eso no es seguro entre hilos); solo lee datos
+    planos y escribe en disco.
+    """
+
+    progreso = pyqtSignal(int)   # porcentaje 0-100
+    terminado = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, filas, ruta, parent=None):
+        super().__init__(parent)
+        self._filas = filas
+        self._ruta = ruta
+
+    def run(self):
+        try:
+            encabezados = [titulo for titulo, _, _ in COLUMNAS]
+            encabezados.append("Clientes")
+
+            claves = [c[1] for c in COLUMNAS]
+            tipos = [c[2] for c in COLUMNAS]
+
+            total = len(self._filas)
+            paso_aviso = max(total // 100, 1)
+
+            with open(self._ruta, "w", encoding="utf-8", newline="") as fh:
+                fh.write(";".join(encabezados) + "\n")
+
+                for i, fila in enumerate(self._filas):
+                    celdas = [_formatear(fila.get(clave), tipo)
+                             for clave, tipo in zip(claves, tipos)]
+                    celdas.append(_clientes_compacto(fila.get("clientes", {})))
+                    fh.write(";".join(celdas))
+                    fh.write("\n")
+
+                    if i % paso_aviso == 0:
+                        self.progreso.emit(int(i * 100 / total) if total else 100)
+
+            self.progreso.emit(100)
+            self.terminado.emit()
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class TablaVector(QTableView):
     # Se emite con el indice de la integracion de Euler al pulsar la celda enlace
     euler_solicitado = pyqtSignal(int)
@@ -513,54 +601,69 @@ class TablaVector(QTableView):
     def exportar_csv(self, ruta):
         """Exporta toda la grilla a un archivo CSV (separador ;).
 
-        Usa el mismo acceso directo a las filas originales que copiar_todo(),
-        sin pasar por QModelIndex/data(), para que sea rapido con 100mil filas.
+        OJO: esta version es SINCRONICA y bloquea la interfaz mientras
+        escribe. Para datasets grandes (decenas de miles de filas o mas, o
+        muchos clientes distintos), usar exportar_csv_async() en su lugar,
+        que corre en un hilo aparte y no congela la ventana.
         """
         modelo = self._modelo
-        ids_clientes = modelo.ids_clientes()
+        claves = [c[1] for c in COLUMNAS]
+        tipos = [c[2] for c in COLUMNAS]
 
         encabezados = [titulo for titulo, _, _ in COLUMNAS]
-        for cid in ids_clientes:
-            encabezados.append(f"Cliente {cid} Estado")
-            encabezados.append(f"Cliente {cid} Motivo")
+        encabezados.append("Clientes")
 
-        with open(ruta, "w", encoding="utf-8") as fh:
+        with open(ruta, "w", encoding="utf-8", newline="") as fh:
             fh.write(";".join(encabezados) + "\n")
             for fila in modelo.filas:
-                celdas = [_formatear(fila.get(clave), tipo) for _, clave, tipo in COLUMNAS]
-                clientes = fila.get("clientes", {})
-                for cid in ids_clientes:
-                    estado, motivo = clientes.get(cid, ("", ""))
-                    celdas.append(str(estado))
-                    celdas.append(str(motivo))
-                fh.write(";".join(celdas) + "\n")
+                celdas = [_formatear(fila.get(clave), tipo)
+                         for clave, tipo in zip(claves, tipos)]
+                celdas.append(_clientes_compacto(fila.get("clientes", {})))
+                fh.write(";".join(celdas))
+                fh.write("\n")
+
+    def exportar_csv_async(self, ruta, on_progreso=None, on_terminado=None, on_error=None):
+        """Version no bloqueante de exportar_csv(): la escritura corre en un
+        QThread aparte, asi la interfaz sigue respondiendo (y no parece
+        "crashear") mientras se exportan 100mil+ filas.
+
+        on_progreso(int): callback opcional, recibe el porcentaje (0-100).
+        on_terminado(): callback opcional, se llama al terminar OK.
+        on_error(str): callback opcional, recibe el mensaje si algo falla.
+
+        Devuelve el QThread. Hay que guardar la referencia devuelta en algun
+        lado (por ejemplo self._hilo_export = ...) mientras este corriendo,
+        para que Python no lo recolecte antes de que termine.
+        """
+        hilo = ExportadorCSV(self._modelo.filas, ruta, self)
+        if on_progreso is not None:
+            hilo.progreso.connect(on_progreso)
+        if on_terminado is not None:
+            hilo.terminado.connect(on_terminado)
+        if on_error is not None:
+            hilo.error.connect(on_error)
+        # Liberar el hilo cuando termine (ya sea por exito o por error)
+        hilo.finished.connect(hilo.deleteLater)
+        hilo.start()
+        return hilo
 
     def copiar_todo(self):
         """Copia toda la grilla al portapapeles en formato TSV.
 
-        Importante: NO pasa por QModelIndex/data() celda por celda (eso
-        tardaba ~19s con 100mil filas, por el overhead de Python en cada
-        llamada). En cambio arma cada fila de texto directamente a partir
-        de las filas originales y las columnas dinamicas de clientes, igual
-        que hace VectorEstadoModel.data() pero sin la capa intermedia. Con
-        esto, 100mil filas se copian en menos de 1 segundo.
+        Usa _clientes_compacto() para condensar todos los clientes activos
+        en una sola columna, evitando iterar los miles de clientes posibles
+        por cada fila (lo que hacia la version anterior extremadamente lenta
+        con simulaciones de muchos clientes distintos).
         """
         modelo = self._modelo
-        ids_clientes = modelo.ids_clientes()
 
         encabezados = [titulo for titulo, _, _ in COLUMNAS]
-        for _ in ids_clientes:
-            encabezados.append("Estado")
-            encabezados.append("Motivo")
+        encabezados.append("Clientes")
 
         partes = ["\t".join(encabezados)]
         for fila in modelo.filas:
             celdas = [_formatear(fila.get(clave), tipo) for _, clave, tipo in COLUMNAS]
-            clientes = fila.get("clientes", {})
-            for cid in ids_clientes:
-                estado, motivo = clientes.get(cid, ("", ""))
-                celdas.append(str(estado))
-                celdas.append(str(motivo))
+            celdas.append(_clientes_compacto(fila.get("clientes", {})))
             partes.append("\t".join(celdas))
 
         QApplication.clipboard().setText("\n".join(partes))
