@@ -120,7 +120,7 @@ class Simulacion:
     # Atencion del ayudante
     # ------------------------------------------------------------------
     def _iniciar_servicio(self, cliente, row):
-        """Inicia la atencion de un cliente que tiene reloj/compra/entrega.
+        """Inicia la atencion de un cliente que tiene compra/entrega/retiro.
 
         No reinicia inicio_ocupacion: este se fija solo en Libre->Ocupado.
         """
@@ -344,7 +344,7 @@ class Simulacion:
                                 if self.reloj > 0 else 0.0)
         row["acum_dias"] = math.ceil(self.reloj / 1440.0) if self.reloj > 0 else 0
         row["acum_cafes"] = self.acum_cafes
-        row["prom_cafes"] = (self.acum_cafes / (self.reloj / 1440.0)
+        row["prom_cafes"] = (self.acum_cafes / (self.reloj / 1440.0) # TODO: porque no divide por los días sin redondear?
                              if self.reloj > 0 else 0.0)
 
         # Clientes (objetos temporales)
@@ -371,7 +371,7 @@ class Simulacion:
         if pendiente is None:
             return
         pendiente["numero"] = len(self.euler_detalles) + 1
-        row["euler_idx"] = len(self.euler_detalles)
+        row["euler_idx"] = len(self.euler_detalles) # TODO: preguntar porque acá guarda el id sin el +1 como arriba
         self.euler_detalles.append(pendiente)
 
     def _quizas_guardar(self, row):
@@ -400,12 +400,16 @@ class Simulacion:
         row0 = self._base_row(0, "Inicializacion")
         row0["rnd_llegada"] = rnd_ll
         row0["t_llegada"] = t_ll
-        self._quizas_guardar(row0)
+        # La fila de inicializacion se guarda siempre (si cae en la ventana)
+        # pero NO consume una de las i filas del presupuesto.
+        if self.reloj >= self.p.j:
+            self._completar_row(row0)
+            self.filas.append(row0)
 
         self.iteracion = 0
         while self.iteracion < self.p.max_iteraciones:
             nombre, tiempo = self._proximo_evento()
-            if nombre is None or tiempo > self.p.X:
+            if nombre is None or tiempo > self.p.X: # TODO: preguntar si nombre is None es necesario
                 break
 
             self.reloj = tiempo

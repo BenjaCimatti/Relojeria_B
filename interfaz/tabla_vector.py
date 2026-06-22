@@ -510,6 +510,31 @@ class TablaVector(QTableView):
             lineas.append("\t".join(celdas))
         QApplication.clipboard().setText("\n".join(lineas))
 
+    def exportar_csv(self, ruta):
+        """Exporta toda la grilla a un archivo CSV (separador ;).
+
+        Usa el mismo acceso directo a las filas originales que copiar_todo(),
+        sin pasar por QModelIndex/data(), para que sea rapido con 100mil filas.
+        """
+        modelo = self._modelo
+        ids_clientes = modelo.ids_clientes()
+
+        encabezados = [titulo for titulo, _, _ in COLUMNAS]
+        for cid in ids_clientes:
+            encabezados.append(f"Cliente {cid} Estado")
+            encabezados.append(f"Cliente {cid} Motivo")
+
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(";".join(encabezados) + "\n")
+            for fila in modelo.filas:
+                celdas = [_formatear(fila.get(clave), tipo) for _, clave, tipo in COLUMNAS]
+                clientes = fila.get("clientes", {})
+                for cid in ids_clientes:
+                    estado, motivo = clientes.get(cid, ("", ""))
+                    celdas.append(str(estado))
+                    celdas.append(str(motivo))
+                fh.write(";".join(celdas) + "\n")
+
     def copiar_todo(self):
         """Copia toda la grilla al portapapeles en formato TSV.
 

@@ -129,12 +129,12 @@ class VentanaPrincipal(QMainWindow):
         self.btn_simular.clicked.connect(self.simular)
         self.btn_limpiar = QPushButton("Limpiar")
         self.btn_limpiar.clicked.connect(self.limpiar)
-        self.btn_copiar = QPushButton("Copiar grilla completa")
-        self.btn_copiar.clicked.connect(lambda: self.tabla.copiar_todo())
+        self.btn_exportar = QPushButton("Exportar a CSV")
+        self.btn_exportar.clicked.connect(self._exportar_vector)
 
         lay.addWidget(self.btn_simular)
         lay.addWidget(self.btn_limpiar)
-        lay.addWidget(self.btn_copiar)
+        lay.addWidget(self.btn_exportar)
         return grupo
 
     def _grupo_resultados(self):
@@ -293,6 +293,18 @@ class VentanaPrincipal(QMainWindow):
                     dd = "" if fila["dD"] is None else f"{fila['dD']:.6f}"
                     fh.write(f"{fila['t']:.6f};{fila['D']:.6f};{dd}\n")
                 fh.write("\n")
+        QMessageBox.information(self, "Exportar", f"Guardado en:\n{ruta}")
+
+    def _exportar_vector(self):
+        if self.sim is None or not self.sim.filas:
+            QMessageBox.information(self, "Exportar", "No hay datos para exportar.")
+            return
+        ruta, _ = QFileDialog.getSaveFileName(
+            self, "Exportar vector de estado", "vector_estado.csv",
+            "CSV (*.csv)")
+        if not ruta:
+            return
+        self.tabla.exportar_csv(ruta)
         QMessageBox.information(self, "Exportar", f"Guardado en:\n{ruta}")
 
     def limpiar(self):
