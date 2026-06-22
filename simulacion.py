@@ -344,7 +344,7 @@ class Simulacion:
                                 if self.reloj > 0 else 0.0)
         row["acum_dias"] = math.ceil(self.reloj / 1440.0) if self.reloj > 0 else 0
         row["acum_cafes"] = self.acum_cafes
-        row["prom_cafes"] = (self.acum_cafes / (self.reloj / 1440.0) # TODO: porque no divide por los días sin redondear?
+        row["prom_cafes"] = (self.acum_cafes / math.ceil(self.reloj / 1440.0)
                              if self.reloj > 0 else 0.0)
 
         # Clientes (objetos temporales)
@@ -371,7 +371,7 @@ class Simulacion:
         if pendiente is None:
             return
         pendiente["numero"] = len(self.euler_detalles) + 1
-        row["euler_idx"] = len(self.euler_detalles) # TODO: preguntar porque acá guarda el id sin el +1 como arriba
+        row["euler_idx"] = len(self.euler_detalles)
         self.euler_detalles.append(pendiente)
 
     def _quizas_guardar(self, row):
@@ -409,7 +409,7 @@ class Simulacion:
         self.iteracion = 0
         while self.iteracion < self.p.max_iteraciones:
             nombre, tiempo = self._proximo_evento()
-            if nombre is None or tiempo > self.p.X: # TODO: preguntar si nombre is None es necesario
+            if tiempo > self.p.X:
                 break
 
             self.reloj = tiempo
