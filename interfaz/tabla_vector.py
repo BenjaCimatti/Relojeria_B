@@ -461,7 +461,12 @@ class ExportadorCSV(QThread):
             total = len(self._filas)
             paso_aviso = max(total // 100, 1)
 
-            with open(self._ruta, "w", encoding="utf-8", newline="") as fh:
+            with open(self._ruta, "w", encoding="utf-8-sig", newline="") as fh:
+                # 'sep=;' le indica explicitamente a Excel/LibreOffice que el
+                # separador es ';'. Sin esto, algunos locales (sobre todo en
+                # ingles) autodetectan ',' como separador y rompen las celdas
+                # con decimales tipo '50,00' en dos columnas.
+                fh.write("sep=;\n")
                 fh.write(";".join(encabezados) + "\n")
 
                 for i, fila in enumerate(self._filas):
@@ -613,7 +618,10 @@ class TablaVector(QTableView):
         encabezados = [titulo for titulo, _, _ in COLUMNAS]
         encabezados.append("Clientes")
 
-        with open(ruta, "w", encoding="utf-8", newline="") as fh:
+        with open(ruta, "w", encoding="utf-8-sig", newline="") as fh:
+            # Ver comentario en ExportadorCSV.run: 'sep=;' fuerza a Excel a
+            # respetar el separador y no confundirlo con la coma decimal.
+            fh.write("sep=;\n")
             fh.write(";".join(encabezados) + "\n")
             for fila in modelo.filas:
                 celdas = [_formatear(fila.get(clave), tipo)
