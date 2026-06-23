@@ -7,7 +7,8 @@ ademas de las constantes de estados y motivos.
 # --- Constantes de estado ---
 LIBRE = "Libre"
 OCUPADO = "Ocupado"
-TOMANDO_REFRIGERIO = "Tomando Refrigerio"
+TOMANDO_CAFE = "Tomando Cafe"
+TOMANDO_REFRESCO = "Tomando Refresco"
 
 # --- Estados del cliente ---
 ESPERANDO_ATENCION = "EA"   # Esperando Atencion
@@ -55,4 +56,3 @@ class Relojero:
         self.cola_a_reparar = 0                 # relojes pendientes de reparacion
         self.cola_listos_retirar = listos_iniciales  # relojes reparados (inicial = 3)
         self.inicio_ocupacion = None            # instante Libre/Refrigerio -> Ocupado
-        self.tipo_refrigerio_actual = None      # tipo del refrigerio en curso

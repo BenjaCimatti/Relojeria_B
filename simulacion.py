@@ -162,8 +162,11 @@ class Simulacion:
     def _iniciar_reparacion(self, row):
         """El relojero toma un reloj de la cola y comienza a repararlo."""
         self.relojero.cola_a_reparar -= 1
+        
+        if self.relojero.estado in (ent.LIBRE, ent.TOMANDO_CAFE, ent.TOMANDO_REFRESCO):
+            self.relojero.inicio_ocupacion = self.reloj
+
         self.relojero.estado = ent.OCUPADO
-        self.relojero.inicio_ocupacion = self.reloj
         rnd = self._rnd()
         dur = self.p.E + rnd * (self.p.F - self.p.E)
         self.fel[EV_FIN_REPARACION] = self.reloj + dur
@@ -237,15 +240,16 @@ class Simulacion:
         self.fel[EV_FIN_REPARACION] = None
         # El reloj reparado pasa a la cola de listos para retirar
         self.relojero.cola_listos_retirar += 1
-        # Acumular tiempo ocupado (la reparacion termino)
-        self.acum_ocup_relojero += self.reloj - self.relojero.inicio_ocupacion
-        self.relojero.inicio_ocupacion = None
 
         # Determinar si toma refrigerio
         rnd_dec = self._rnd()
         row["rnd_refrig"] = rnd_dec
         if rnd_dec < self.p.prob_refrigerio:
             row["toma_refrig"] = "Toma refrigerio"
+            # Acumular tiempo ocupado (la reparacion termino)
+            self.acum_ocup_relojero += self.reloj - self.relojero.inicio_ocupacion
+            self.relojero.inicio_ocupacion = None
+
             rnd_tipo = self._rnd()
             row["rnd_tipo"] = rnd_tipo
             if rnd_tipo < 0.5:
@@ -256,8 +260,7 @@ class Simulacion:
                 c_act = ent.C_CAFE
             r = self.relojero.cola_a_reparar
             dur, historial = integrar_refrigerio(c_act, self.p.a, r, self.p.h)
-            self.relojero.estado = ent.TOMANDO_REFRIGERIO
-            self.relojero.tipo_refrigerio_actual = tipo
+            self.relojero.estado = ent.TOMANDO_CAFE if tipo == ent.CAFE else ent.TOMANDO_REFRESCO
             self.fel[EV_FIN_REFRIGERIO] = self.reloj + dur
             row["tipo_refrig"] = "Refresco" if tipo == ent.REFRESCO else "Cafe"
             row["dur_refrig"] = dur
@@ -279,13 +282,17 @@ class Simulacion:
                 self._iniciar_reparacion(row)
             else:
                 self.relojero.estado = ent.LIBRE
+                # Acumular tiempo ocupado (la reparacion termino)
+                self.acum_ocup_relojero += self.reloj - self.relojero.inicio_ocupacion
+                self.relojero.inicio_ocupacion = None
 
     def _ev_fin_refrigerio(self, row):
         self.fel[EV_FIN_REFRIGERIO] = None
-        # Contar cafes (solo tipo cafe, segun especificacion textual)
-        if self.relojero.tipo_refrigerio_actual == ent.CAFE:
+        # Contar cafes (solo tipo cafe, segun especificacion textual).
+        # El tipo se deduce del estado actual del relojero (que fue fijado
+        # como TOMANDO_CAFE o TOMANDO_REFRESCO al iniciar el refrigerio).
+        if self.relojero.estado == ent.TOMANDO_CAFE:
             self.acum_cafes += 1
-        self.relojero.tipo_refrigerio_actual = None
         # Continuar reparando si hay relojes pendientes
         if self.relojero.cola_a_reparar > 0:
             self._iniciar_reparacion(row)
@@ -464,7 +471,7 @@ class Simulacion:
                          if self.acum_total_retiros > 0 else 0.0)
         porc_ay = self.acum_ocup_ayudante / x * 100 if x > 0 else 0.0
         porc_rel = self.acum_ocup_relojero / x * 100 if x > 0 else 0.0
-        prom_cafes = self.acum_cafes / (x / 1440.0) if x > 0 else 0.0
+        prom_cafes = self.acum_cafes / math.ceil(x / 1440.0) if x > 0 else 0.0
         return {
             "prob_retiro_sin_reloj": prob_no_reloj,
             "porc_ocup_ayudante": porc_ay,

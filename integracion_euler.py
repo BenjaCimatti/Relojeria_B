@@ -23,7 +23,7 @@ def integrar_refrigerio(c_act, a, r, h=0.1):
     """
     D = 0.0
     t_local = 0.0
-    historial = [{"t": 0.0, "D": 0.0, "dD": None}]
+    historial = [{"t": t_local, "D": D, "dD": None}]
 
     # Salvaguarda contra bucles infinitos (no deberia alcanzarse).
     max_pasos = 10_000_000
